@@ -11,6 +11,13 @@ const groupValue = document.querySelector('#groupValue');
 const timesBody = document.querySelector('#timesBody');
 const jsonOutput = document.querySelector('#jsonOutput');
 
+const OCR_HINTS = {
+  tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:;.,\'"′″ ',
+  tessedit_pageseg_mode: '6',
+  preserve_interword_spaces: '1',
+};
+const MAX_OCR_WIDTH = 1200;
+
 const setStatus = (message, state = '') => {
   status.textContent = message;
   status.className = `status ${state}`.trim();
@@ -37,14 +44,48 @@ const renderParsedData = () => {
   jsonOutput.textContent = JSON.stringify(parsed, null, 2);
 };
 
+const loadImage = (file) => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.onload = () => resolve(image);
+  image.onerror = () => reject(new Error('Unable to load the selected image.'));
+  image.src = URL.createObjectURL(file);
+});
+
+const preprocessForOcr = async (file) => {
+  const image = await loadImage(file);
+  const scale = Math.min(1, MAX_OCR_WIDTH / image.naturalWidth);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(image.naturalWidth * scale);
+  canvas.height = Math.round(image.naturalHeight * scale);
+
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const pixels = imageData.data;
+
+  for (let index = 0; index < pixels.length; index += 4) {
+    const gray = pixels[index] * 0.299 + pixels[index + 1] * 0.587 + pixels[index + 2] * 0.114;
+    const highContrast = gray > 145 ? 255 : 0;
+    pixels[index] = highContrast;
+    pixels[index + 1] = highContrast;
+    pixels[index + 2] = highContrast;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return canvas.toDataURL('image/png');
+};
+
 const runOcr = async (file) => {
   preview.src = URL.createObjectURL(file);
   preview.classList.remove('hidden');
   placeholder.classList.add('hidden');
-  setStatus('Running OCR locally in your browser…', 'reading');
+  setStatus('Preparing image and running OCR locally in your browser…', 'reading');
 
   try {
-    const result = await Tesseract.recognize(file, 'eng', {
+    const preparedImage = await preprocessForOcr(file);
+    const result = await Tesseract.recognize(preparedImage, 'eng', {
+      ...OCR_HINTS,
       logger: ({ status: label, progress }) => {
         if (label) setStatus(`${label} ${Math.round((progress ?? 0) * 100)}%`, 'reading');
       },
