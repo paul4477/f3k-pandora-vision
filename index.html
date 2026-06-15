@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pandora Vision</title>
+    <link rel="stylesheet" href="src/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Pandora Vision</p>
+          <h1>Capture timing-device screens and turn them into structured race data.</h1>
+          <p class="hero-copy">Browser-based OCR extracts the round, group, and listed flight times into JSON for a future API submission step.</p>
+        </div>
+        <button class="primary" id="captureButton">Capture or upload image</button>
+        <input class="visually-hidden" id="imageInput" type="file" accept="image/*" capture="environment" />
+      </section>
+
+      <section class="workspace">
+        <div class="card preview-card">
+          <h2>Image</h2>
+          <div class="placeholder" id="placeholder">No image selected</div>
+          <img class="hidden" id="preview" alt="Captured timing device" />
+          <p class="status" id="status">Capture or upload an image to begin.</p>
+        </div>
+
+        <div class="card">
+          <h2>OCR text</h2>
+          <textarea id="ocrText">04B1
+01:00'46&quot;7
+02:00'59&quot;5</textarea>
+          <p class="hint">Edit this text to correct OCR before using the parsed result.</p>
+        </div>
+
+        <div class="card result-card">
+          <h2>Parsed data</h2>
+          <dl class="summary-grid">
+            <div><dt>Round</dt><dd id="roundValue">—</dd></div>
+            <div><dt>Group</dt><dd id="groupValue">—</dd></div>
+          </dl>
+          <table>
+            <thead><tr><th>#</th><th>Time</th></tr></thead>
+            <tbody id="timesBody"></tbody>
+          </table>
+          <pre id="jsonOutput"></pre>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
