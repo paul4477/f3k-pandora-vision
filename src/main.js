@@ -27,9 +27,12 @@ const TIMES_OCR_HINTS = {
 };
 const MAX_OCR_WIDTH = 1200;
 const BLACK_PIXEL_THRESHOLD = 70;
+const MIN_BLACK_LINE_RATIO = 0.08;
 const OCR_UPSCALE = 2;
 const CONTRAST_FACTOR = 2.2;
-const BINARIZE_THRESHOLD = 155;
+const MIN_BINARIZE_THRESHOLD = 65;
+const MAX_BINARIZE_THRESHOLD = 170;
+const ADAPTIVE_THRESHOLD_FACTOR = 0.82;
 const SEGMENTS = {
   roundGroup: { x: 0.48, y: 0.12, width: 0.44, height: 0.18 },
   times: { x: 0.22, y: 0.38, width: 0.70, height: 0.34 },
@@ -82,10 +85,8 @@ const drawScaledImage = (image) => {
 const findBlackRegion = (context, width, height) => {
   const imageData = context.getImageData(0, 0, width, height);
   const pixels = imageData.data;
-  let minX = width;
-  let minY = height;
-  let maxX = 0;
-  let maxY = 0;
+  const columns = new Array(width).fill(0);
+  const rows = new Array(height).fill(0);
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -95,15 +96,20 @@ const findBlackRegion = (context, width, height) => {
         && pixels[index + 2] < BLACK_PIXEL_THRESHOLD;
 
       if (isBlack) {
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
+        columns[x] += 1;
+        rows[y] += 1;
       }
     }
   }
 
-  if (minX >= maxX || minY >= maxY) {
+  const minColumnPixels = height * MIN_BLACK_LINE_RATIO;
+  const minRowPixels = width * MIN_BLACK_LINE_RATIO;
+  const minX = columns.findIndex((count) => count > minColumnPixels);
+  const maxX = columns.findLastIndex((count) => count > minColumnPixels);
+  const minY = rows.findIndex((count) => count > minRowPixels);
+  const maxY = rows.findLastIndex((count) => count > minRowPixels);
+
+  if (minX < 0 || maxX <= minX || minY < 0 || maxY <= minY) {
     return { x: 0, y: 0, width, height };
   }
 
@@ -124,15 +130,31 @@ const cropSegment = (source, blackRegion, segment) => {
   return canvas;
 };
 
-const binarizeCanvas = (canvas) => {
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const enhanceCanvasForOcr = (canvas) => {
   const context = canvas.getContext('2d', { willReadFrequently: true });
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
   const pixels = imageData.data;
+  const grays = [];
+  let grayTotal = 0;
 
   for (let index = 0; index < pixels.length; index += 4) {
     const gray = pixels[index] * 0.299 + pixels[index + 1] * 0.587 + pixels[index + 2] * 0.114;
-    const contrasted = Math.max(0, Math.min(255, (gray - 128) * CONTRAST_FACTOR + 128));
-    const highContrast = contrasted > BINARIZE_THRESHOLD ? 255 : 0;
+    grays.push(gray);
+    grayTotal += gray;
+  }
+
+  const averageGray = grayTotal / grays.length;
+  const threshold = clamp(
+    averageGray * ADAPTIVE_THRESHOLD_FACTOR,
+    MIN_BINARIZE_THRESHOLD,
+    MAX_BINARIZE_THRESHOLD,
+  );
+
+  for (let index = 0, grayIndex = 0; index < pixels.length; index += 4, grayIndex += 1) {
+    const contrasted = clamp((grays[grayIndex] - averageGray) * CONTRAST_FACTOR + 128, 0, 255);
+    const highContrast = grays[grayIndex] > threshold || contrasted > 145 ? 255 : 0;
     pixels[index] = highContrast;
     pixels[index + 1] = highContrast;
     pixels[index + 2] = highContrast;
@@ -148,8 +170,8 @@ const preprocessForOcr = async (file) => {
   const blackRegion = findBlackRegion(context, canvas.width, canvas.height);
 
   return {
-    roundGroup: binarizeCanvas(cropSegment(canvas, blackRegion, SEGMENTS.roundGroup)),
-    times: binarizeCanvas(cropSegment(canvas, blackRegion, SEGMENTS.times)),
+    roundGroup: enhanceCanvasForOcr(cropSegment(canvas, blackRegion, SEGMENTS.roundGroup)),
+    times: enhanceCanvasForOcr(cropSegment(canvas, blackRegion, SEGMENTS.times)),
   };
 };
 
