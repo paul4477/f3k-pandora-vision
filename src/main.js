@@ -28,14 +28,14 @@ const TIMES_OCR_HINTS = {
 const MAX_OCR_WIDTH = 1200;
 const BLACK_PIXEL_THRESHOLD = 70;
 const MIN_BLACK_LINE_RATIO = 0.08;
-const OCR_UPSCALE = 2;
+const OCR_UPSCALE = 3;
 const CONTRAST_FACTOR = 2.2;
 const MIN_BINARIZE_THRESHOLD = 65;
 const MAX_BINARIZE_THRESHOLD = 170;
 const ADAPTIVE_THRESHOLD_FACTOR = 0.82;
 const SEGMENTS = {
-  roundGroup: { x: 0.48, y: 0.12, width: 0.44, height: 0.18 },
-  times: { x: 0.22, y: 0.38, width: 0.70, height: 0.34 },
+  roundGroup: { x: 0.44, y: 0.08, width: 0.52, height: 0.24, padding: 0.08 },
+  times: { x: 0.16, y: 0.34, width: 0.80, height: 0.42, padding: 0.06 },
 };
 
 const setStatus = (message, state = '') => {
@@ -117,16 +117,24 @@ const findBlackRegion = (context, width, height) => {
 };
 
 const cropSegment = (source, blackRegion, segment) => {
+  const paddingX = blackRegion.width * (segment.padding ?? 0);
+  const paddingY = blackRegion.height * (segment.padding ?? 0);
+  const left = blackRegion.x + blackRegion.width * segment.x - paddingX;
+  const top = blackRegion.y + blackRegion.height * segment.y - paddingY;
+  const right = blackRegion.x + blackRegion.width * (segment.x + segment.width) + paddingX;
+  const bottom = blackRegion.y + blackRegion.height * (segment.y + segment.height) + paddingY;
   const crop = {
-    x: Math.round(blackRegion.x + blackRegion.width * segment.x),
-    y: Math.round(blackRegion.y + blackRegion.height * segment.y),
-    width: Math.round(blackRegion.width * segment.width),
-    height: Math.round(blackRegion.height * segment.height),
+    x: Math.round(clamp(left, 0, source.width - 1)),
+    y: Math.round(clamp(top, 0, source.height - 1)),
+    width: Math.round(clamp(right, 1, source.width) - clamp(left, 0, source.width - 1)),
+    height: Math.round(clamp(bottom, 1, source.height) - clamp(top, 0, source.height - 1)),
   };
   const canvas = document.createElement('canvas');
   canvas.width = crop.width * OCR_UPSCALE;
   canvas.height = crop.height * OCR_UPSCALE;
-  canvas.getContext('2d').drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
+  const context = canvas.getContext('2d');
+  context.imageSmoothingEnabled = false;
+  context.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
   return canvas;
 };
 
