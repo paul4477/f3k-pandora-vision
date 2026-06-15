@@ -11,12 +11,24 @@ const groupValue = document.querySelector('#groupValue');
 const timesBody = document.querySelector('#timesBody');
 const jsonOutput = document.querySelector('#jsonOutput');
 
-const OCR_HINTS = {
+const COMMON_OCR_HINTS = {
   tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:;.,\'"′″ ',
-  tessedit_pageseg_mode: '6',
   preserve_interword_spaces: '1',
 };
+const ROUND_GROUP_OCR_HINTS = {
+  ...COMMON_OCR_HINTS,
+  tessedit_pageseg_mode: '7',
+};
+const TIMES_OCR_HINTS = {
+  ...COMMON_OCR_HINTS,
+  tessedit_pageseg_mode: '6',
+};
 const MAX_OCR_WIDTH = 1200;
+const BLACK_PIXEL_THRESHOLD = 70;
+const SEGMENTS = {
+  roundGroup: { x: 0.48, y: 0.12, width: 0.44, height: 0.18 },
+  times: { x: 0.22, y: 0.38, width: 0.70, height: 0.34 },
+};
 
 const setStatus = (message, state = '') => {
   status.textContent = message;
@@ -51,8 +63,7 @@ const loadImage = (file) => new Promise((resolve, reject) => {
   image.src = URL.createObjectURL(file);
 });
 
-const preprocessForOcr = async (file) => {
-  const image = await loadImage(file);
+const drawScaledImage = (image) => {
   const scale = Math.min(1, MAX_OCR_WIDTH / image.naturalWidth);
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(image.naturalWidth * scale);
@@ -60,7 +71,56 @@ const preprocessForOcr = async (file) => {
 
   const context = canvas.getContext('2d', { willReadFrequently: true });
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return { canvas, context };
+};
 
+const findBlackRegion = (context, width, height) => {
+  const imageData = context.getImageData(0, 0, width, height);
+  const pixels = imageData.data;
+  let minX = width;
+  let minY = height;
+  let maxX = 0;
+  let maxY = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const isBlack = pixels[index] < BLACK_PIXEL_THRESHOLD
+        && pixels[index + 1] < BLACK_PIXEL_THRESHOLD
+        && pixels[index + 2] < BLACK_PIXEL_THRESHOLD;
+
+      if (isBlack) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+
+  if (minX >= maxX || minY >= maxY) {
+    return { x: 0, y: 0, width, height };
+  }
+
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+};
+
+const cropSegment = (source, blackRegion, segment) => {
+  const crop = {
+    x: Math.round(blackRegion.x + blackRegion.width * segment.x),
+    y: Math.round(blackRegion.y + blackRegion.height * segment.y),
+    width: Math.round(blackRegion.width * segment.width),
+    height: Math.round(blackRegion.height * segment.height),
+  };
+  const canvas = document.createElement('canvas');
+  canvas.width = crop.width;
+  canvas.height = crop.height;
+  canvas.getContext('2d').drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+  return canvas;
+};
+
+const binarizeCanvas = (canvas) => {
+  const context = canvas.getContext('2d', { willReadFrequently: true });
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
   const pixels = imageData.data;
 
@@ -76,6 +136,17 @@ const preprocessForOcr = async (file) => {
   return canvas.toDataURL('image/png');
 };
 
+const preprocessForOcr = async (file) => {
+  const image = await loadImage(file);
+  const { canvas, context } = drawScaledImage(image);
+  const blackRegion = findBlackRegion(context, canvas.width, canvas.height);
+
+  return {
+    roundGroup: binarizeCanvas(cropSegment(canvas, blackRegion, SEGMENTS.roundGroup)),
+    times: binarizeCanvas(cropSegment(canvas, blackRegion, SEGMENTS.times)),
+  };
+};
+
 const runOcr = async (file) => {
   preview.src = URL.createObjectURL(file);
   preview.classList.remove('hidden');
@@ -83,14 +154,20 @@ const runOcr = async (file) => {
   setStatus('Preparing image and running OCR locally in your browser…', 'reading');
 
   try {
-    const preparedImage = await preprocessForOcr(file);
-    const result = await Tesseract.recognize(preparedImage, 'eng', {
-      ...OCR_HINTS,
+    const preparedImages = await preprocessForOcr(file);
+    const roundGroupResult = await Tesseract.recognize(preparedImages.roundGroup, 'eng', {
+      ...ROUND_GROUP_OCR_HINTS,
       logger: ({ status: label, progress }) => {
-        if (label) setStatus(`${label} ${Math.round((progress ?? 0) * 100)}%`, 'reading');
+        if (label) setStatus(`Reading round/group: ${label} ${Math.round((progress ?? 0) * 100)}%`, 'reading');
       },
     });
-    ocrText.value = result.data.text;
+    const timesResult = await Tesseract.recognize(preparedImages.times, 'eng', {
+      ...TIMES_OCR_HINTS,
+      logger: ({ status: label, progress }) => {
+        if (label) setStatus(`Reading time list: ${label} ${Math.round((progress ?? 0) * 100)}%`, 'reading');
+      },
+    });
+    ocrText.value = `${roundGroupResult.data.text}\n${timesResult.data.text}`;
     renderParsedData();
     setStatus('OCR complete. Review and correct the extracted text if needed.', 'complete');
   } catch (error) {
