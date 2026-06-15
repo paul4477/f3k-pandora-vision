@@ -9,7 +9,7 @@ h1, h2 { margin-top: 0; }
 h1 { max-width: 780px; font-size: clamp(2rem, 5vw, 4rem); line-height: 1; }
 .hero-copy { max-width: 720px; color: #d8e8f0; font-size: 1.1rem; }
 .primary { border: 0; border-radius: 999px; padding: 16px 22px; color: #142033; background: #ffd84d; font-weight: 800; cursor: pointer; }
-.workspace { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 24px; }
+.workspace { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin-top: 24px; }
 .card { padding: 22px; border: 1px solid #d9e2ec; border-radius: 22px; background: white; box-shadow: 0 10px 28px rgba(21, 32, 51, 0.08); }
 .preview-card img, .placeholder { width: 100%; min-height: 320px; border-radius: 16px; object-fit: contain; background: #f5f8fb; }
 .placeholder { display: grid; place-items: center; color: #65758b; border: 2px dashed #c8d5e3; }
@@ -24,5 +24,8 @@ dd { margin: 0; font-size: 2rem; font-weight: 900; }
 table { width: 100%; border-collapse: collapse; margin: 16px 0; }
 th, td { padding: 10px; border-bottom: 1px solid #e5edf4; text-align: left; }
 pre { overflow: auto; padding: 14px; border-radius: 14px; background: #111827; color: #d1fae5; }
+.crop-card figure { margin: 0 0 16px; }
+.crop-card figcaption { margin-bottom: 8px; color: #65758b; font-weight: 800; }
+.crop-card img { width: 100%; min-height: 90px; border: 1px solid #d9e2ec; border-radius: 12px; background: #f5f8fb; object-fit: contain; }
 .hidden, .visually-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 @media (max-width: 900px) { .hero, .workspace { grid-template-columns: 1fr; } .primary { width: 100%; } }

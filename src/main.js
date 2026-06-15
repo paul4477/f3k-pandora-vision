@@ -10,6 +10,8 @@ const roundValue = document.querySelector('#roundValue');
 const groupValue = document.querySelector('#groupValue');
 const timesBody = document.querySelector('#timesBody');
 const jsonOutput = document.querySelector('#jsonOutput');
+const roundGroupCrop = document.querySelector('#roundGroupCrop');
+const timesCrop = document.querySelector('#timesCrop');
 
 const COMMON_OCR_HINTS = {
   tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:;.,\'"′″ ',
@@ -25,6 +27,9 @@ const TIMES_OCR_HINTS = {
 };
 const MAX_OCR_WIDTH = 1200;
 const BLACK_PIXEL_THRESHOLD = 70;
+const OCR_UPSCALE = 2;
+const CONTRAST_FACTOR = 2.2;
+const BINARIZE_THRESHOLD = 155;
 const SEGMENTS = {
   roundGroup: { x: 0.48, y: 0.12, width: 0.44, height: 0.18 },
   times: { x: 0.22, y: 0.38, width: 0.70, height: 0.34 },
@@ -113,9 +118,9 @@ const cropSegment = (source, blackRegion, segment) => {
     height: Math.round(blackRegion.height * segment.height),
   };
   const canvas = document.createElement('canvas');
-  canvas.width = crop.width;
-  canvas.height = crop.height;
-  canvas.getContext('2d').drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+  canvas.width = crop.width * OCR_UPSCALE;
+  canvas.height = crop.height * OCR_UPSCALE;
+  canvas.getContext('2d').drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
   return canvas;
 };
 
@@ -126,7 +131,8 @@ const binarizeCanvas = (canvas) => {
 
   for (let index = 0; index < pixels.length; index += 4) {
     const gray = pixels[index] * 0.299 + pixels[index + 1] * 0.587 + pixels[index + 2] * 0.114;
-    const highContrast = gray > 145 ? 255 : 0;
+    const contrasted = Math.max(0, Math.min(255, (gray - 128) * CONTRAST_FACTOR + 128));
+    const highContrast = contrasted > BINARIZE_THRESHOLD ? 255 : 0;
     pixels[index] = highContrast;
     pixels[index + 1] = highContrast;
     pixels[index + 2] = highContrast;
@@ -155,6 +161,8 @@ const runOcr = async (file) => {
 
   try {
     const preparedImages = await preprocessForOcr(file);
+    roundGroupCrop.src = preparedImages.roundGroup;
+    timesCrop.src = preparedImages.times;
     const roundGroupResult = await Tesseract.recognize(preparedImages.roundGroup, 'eng', {
       ...ROUND_GROUP_OCR_HINTS,
       logger: ({ status: label, progress }) => {
